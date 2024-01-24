@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Superstores in Hamilton</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+
+    <style>
+        #map {
+            height: 70vh;
+            width: 100%;
+        }
+
+        @media screen and (max-width: 767px) {
+            #map {
+                height: 50vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container mt-4">
+        <h2>Superstores in Hamilton</h2>
+        <!-- Map container -->
+        <div id="map" class="mb-3"></div>
+
+        <!-- Buttons for selecting a specific superstore -->
+        <div class="mb-2">
+            <button class="btn btn-primary" id="walmart">Walmart</button>
+            <button class="btn btn-danger" id="canadianTire">Canadian Tire</button>
+            <button class="btn btn-warning" id="costco">Costco</button>
+            <button class="btn btn-success" id="all">All</button>
+        </div>
+        <!-- Button to mark the user's location on the map -->
+        <button class="btn btn-secondary mb-2" id="geolocation">Mark My Location</button>
+
+        <!-- Input field for users to type in their address -->
+        <div class="input-group mb-2">
+            <input type="text" class="form-control" placeholder="Enter your address" id="addressInput">
+            <div class="input-group-append">
+                <button class="btn btn-dark" id="markAddress">Go</button>
+            </div>
+        </div>
+
+        <!-- Dropdowns to select start and end locations for directions -->
+        <div class="mb-2">
+            <label for="start">Choose starting point:</label>
+            <select id="start" class="form-control mb-2">
+                <option value="" disabled selected>Choose starting point</option>
+            </select>
+
+            <label for="end">Choose destination:</label>
+            <select id="end" class="form-control">
+                <option value="" disabled selected>Choose destination</option>
+            </select>
+
+            <!-- Buttons to get and remove directions -->
+            <button class="btn btn-secondary mt-2" id="getDirections">Get Directions</button>
+            <button class="btn btn-danger mt-2 ml-2" id="removeDirections">Remove Directions</button>
+
+        </div>
+    </div>
+
+    <!-- Google Maps script -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC8px3Wv7jj4wrkeU-d6lkY3J90bjVWxFE&libraries=places"></script>
+    <!-- External script containing superstore data -->
+    <script src="superstores_info.js"></script>
+    <!-- Main script for map functionality -->
+    <script>
+        // Map and related variables
+        let map;
+        let markers = [];
+        let infowindow = new google.maps.InfoWindow();
+        const directionsService = new google.maps.DirectionsService();
+        const directionsRenderer = new google.maps.DirectionsRenderer();
+
+        // Function to add locations to dropdowns for directions
+        function addLocationToDropdown(label, location) {
+            const startDropdown = document.getElementById('start');
+            const endDropdown = document.getElementById('end');
+            const option = document.createElement("option");
+            option.text = label;
+            option.value = JSON.stringify(location);
+            startDropdown.add(option.cloneNode(true));
+            endDropdown.add(option);
+        }
+
+        // Initialize the map with markers and settings
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 43.2557, lng: -79.8711 },
+                zoom: 12,
+            });
+            directionsRenderer.setMap(map);
+
+            // Iterate over places and set markers
+            places.forEach(place => {
+                const marker = new google.maps.Marker({
+                    position: { lat: place.lat, lng: place.lng },
+                    title: place.name,
+                    icon: {
+                        url: place.type === "walmart" ? "./walmart.png" : 
+                             place.type === "canadianTire" ? "./canadianTire.png" : 
+                             place.type === "costco" ? "./costco.png" : "./coffee.png",
+                        scaledSize: new google.maps.Size(32, 32)
+                    },
+                    type: place.type
+                });
+
+                // Set click event for infowindow for each marker
+                marker.addListener('click', function () {
+                    infowindow.close(); // Close previously opened infowindow
+                    infowindow.setContent(place.name);
+                    infowindow.open(map, marker);
+                });
+
+                marker.setMap(map);
+                markers.push(marker);
+
+                // Add the place to the dropdown
+                addLocationToDropdown(place.name, { lat: place.lat, lng: place.lng });
+            });
+
+            // Set click events for filter buttons
+            document.getElementById("walmart").onclick = () => filterMarkers("walmart");
+            document.getElementById("canadianTire").onclick = () => filterMarkers("canadianTire");
+            document.getElementById("costco").onclick = () => filterMarkers("costco");
+            document.getElementById("all").onclick = () => filterMarkers("all");
+            document.getElementById("geolocation").onclick = markUserLocation;
+            document.getElementById("markAddress").onclick = markAddress;
+            document.getElementById("getDirections").onclick = getDirections;
+            document.getElementById("removeDirections").onclick = removeDirections;
+
+            resetDropdowns();
+        }
+        
+        // Filter markers based on the type (e.g., walmart, canadianTire, costco)
+        function filterMarkers(type) {
+            infowindow.close(); // Close the infowindow when filtering markers
+            markers.forEach(marker => {
+                if (type === "all") {
+                    marker.setMap(map);
+                } else {
+                    marker.setMap(marker.type === type ? map : null);
+                }
+            });
+        }
+
+        // Mark the user's current location on the map
+        function markUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                    const pos = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+
+                    new google.maps.Marker({
+                        position: pos,
+                        map: map,
+                        title: "You are here!",
+                        icon: {
+                            url: "./mylocation.png",
+                            scaledSize: new google.maps.Size(32, 32)
+                        }
+                    });
+
+                    addLocationToDropdown("My Location", pos);
+                    map.setCenter(pos);
+                });
+            }
+        }
+
+        // Mark a specific address entered by the user on the map
+        function markAddress() {
+            const address = document.getElementById("addressInput").value;
+            const geocoder = new google.maps.Geocoder();
+
+            geocoder.geocode({ 'address': address }, function (results, status) {
+                if (status === 'OK') {
+                    map.setCenter(results[0].geometry.location);
+                    new google.maps.Marker({
+                        map: map,
+                        position: results[0].geometry.location,
+                        icon: {
+                            url: "./location.png",
+                            scaledSize: new google.maps.Size(24, 32)
+                        }
+                    });
+
+                    // Add the address to the dropdown
+                    addLocationToDropdown(address, results[0].geometry.location);
+                } else {
+                    alert('Geocode was not successful for the following reason: ' + status);
+                }
+            });
+        }
+
+        // Get directions from start to end points
+        function getDirections() {
+            const start = JSON.parse(document.getElementById('start').value);
+            const end = JSON.parse(document.getElementById('end').value);
+
+            directionsService.route({
+                origin: start,
+                destination: end,
+                travelMode: 'DRIVING'
+            }, function (response, status) {
+                if (status === 'OK') {
+                    directionsRenderer.setDirections(response);
+                } else {
+                    alert('Directions request failed due to ' + status);
+                }
+            });
+        }
+
+        // Remove directions from start to end points
+        function removeDirections() {
+            directionsRenderer.setDirections({ routes: [] });
+            resetDropdowns();
+        }
+
+        function resetDropdowns() {
+            const startDropdown = document.getElementById('start');
+            const endDropdown = document.getElementById('end');
+            startDropdown.selectedIndex = 0;
+            endDropdown.selectedIndex = 0;
+        }
+
+        initMap();
+    </script>
+</body>
+</html>
